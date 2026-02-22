@@ -124,6 +124,16 @@ class GitHubService:
             return any(item.get("name") == "workflows" for item in data)
         return False
 
+    def get_user_prs(self, username: str) -> int:
+        """Fetch total merged/created PRs by the user."""
+        data = self._request("https://api.github.com/search/issues", {"q": f"author:{username} type:pr"})
+        return data.get("total_count", 0) if isinstance(data, dict) else 0
+
+    def get_user_issues(self, username: str) -> int:
+        """Fetch total issues created by the user."""
+        data = self._request("https://api.github.com/search/issues", {"q": f"author:{username} type:issue"})
+        return data.get("total_count", 0) if isinstance(data, dict) else 0
+
     def get_file_content(self, owner: str, repo: str, path: str) -> Optional[str]:
         """Get decoded file content from a repository."""
         data = self._request(

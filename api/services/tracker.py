@@ -49,16 +49,26 @@ def calculate_coding_time(commits: list) -> float:
         secs = diff.total_seconds()
 
         if diff < SESSION_GAP:
-            # Within session — add actual time (capped)
             total_secs += min(secs, MAX_SESSION * 3600)
         else:
-            # New session — add base time for previous session's last commit
             total_secs += MIN_SESSION * 60
 
-    # Add base time for the final commit
     total_secs += MIN_SESSION * 60
 
-    return total_secs / 3600
+    # Calculate time of day (using UTC for now, or user tz)
+    hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
+    for t in times:
+        h = t.hour
+        if 0 <= h < 6:
+            hours_dist["night"] += 1
+        elif 6 <= h < 12:
+            hours_dist["morning"] += 1
+        elif 12 <= h < 18:
+            hours_dist["daytime"] += 1
+        else:
+            hours_dist["evening"] += 1
+
+    return total_secs / 3600, hours_dist
 
 
 def is_valid_commit(commit: dict) -> bool:
@@ -81,7 +91,7 @@ def process_single_repo(service, username: str, repo: dict,
     """Process one repository: languages, commits, frameworks."""
     name = repo["name"]
     owner = repo.get("owner", {}).get("login", username)
-    result = {"name": name, "langs": {}, "frameworks": set(), "hours": 0.0}
+    result = {"name": name, "langs": {}, "frameworks": set(), "hours": 0.0, "hours_dist": {"night": 0, "morning": 0, "daytime": 0, "evening": 0}}
 
     try:
         # Skip empty repos
@@ -102,7 +112,10 @@ def process_single_repo(service, username: str, repo: dict,
             commits = service.get_commits(owner, name, owner, since_iso, until_iso)
 
         valid = [c for c in commits if is_valid_commit(c)]
-        result["hours"] = calculate_coding_time(valid)
+        if valid:
+            hours_calc, hours_dist = calculate_coding_time(valid)
+            result["hours"] = hours_calc
+            result["hours_dist"] = hours_dist
 
         # 3. Frameworks
         primary = repo.get("language", "")
@@ -129,12 +142,13 @@ def run_tracker(service, username: str, period_days: int,
     since_iso = since.isoformat()
     until_iso = now.isoformat()
 
-    # Fetch ALL repos (public + private)
-    repos = service.get_repos(username, max_repos, include_forks=False)
+    # Fetch ALL repos (public + private + forks)
+    repos = service.get_repos(username, max_repos, include_forks=True)
     if not repos:
         return {
             "langs": {}, "frameworks": {}, "total_hours": 0,
             "repo_count": 0, "period_days": period_days, "username": username,
+            "prs": 0, "issues": 0, "busiest_time": "Daytime",
         }
 
     # Filter: only repos pushed within the period
@@ -158,11 +172,17 @@ def run_tracker(service, username: str, period_days: int,
 
     lang_hours = defaultdict(float)
     fw_hours = defaultdict(float)
+    total_hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
     processed = 0
 
+    # Fetch PRs and Issues in background
+    prs_future = None
+    issues_future = None
+
     # Parallel processing with more workers
-    workers = min(12, len(repos_in_period))
+    workers = min(12, len(repos_in_period) + 2)
     with ThreadPoolExecutor(max_workers=workers) as pool:
+        # Submit repo jobs
         futures = {
             pool.submit(
                 process_single_repo, service, username, repo,
@@ -170,6 +190,10 @@ def run_tracker(service, username: str, period_days: int,
             ): repo
             for repo in repos_in_period
         }
+        
+        # Submit PR and Issue count jobs
+        prs_future = pool.submit(service.get_user_prs, username)
+        issues_future = pool.submit(service.get_user_issues, username)
 
         for future in as_completed(futures):
             # Check deadline
@@ -193,14 +217,32 @@ def run_tracker(service, username: str, period_days: int,
             for lang, byte_count in r["langs"].items():
                 lang_hours[lang] += r["hours"] * (byte_count / total_bytes)
 
-            # Each framework gets full repo time
-            for fw in r["frameworks"]:
-                fw_hours[fw] += r["hours"]
+            # Time of day dist
+            for k, v in r.get("hours_dist", {}).items():
+                total_hours_dist[k] += v
 
     total = sum(lang_hours.values())
+    
+    # Extract PRs and Issues safely
+    prs = 0
+    issues = 0
+    try:
+        if prs_future:
+            prs = prs_future.result(timeout=2)
+        if issues_future:
+            issues = issues_future.result(timeout=2)
+    except Exception:
+        pass
+
+    # Determine Busiest Time
+    busiest_time = "Daytime"
+    if sum(total_hours_dist.values()) > 0:
+        busiest_time_key = max(total_hours_dist, key=total_hours_dist.get)
+        busiest_map = {"night": "Night Owl", "morning": "Early Bird", "daytime": "Day Worker", "evening": "Evening Coder"}
+        busiest_time = busiest_map.get(busiest_time_key, "Daytime")
+
     elapsed = time_mod.time() - start_time
-    logger.info(f"Processed {processed} repos in {elapsed:.1f}s — "
-                f"{total:.1f} total hours")
+    logger.info(f"Processed {processed} repos in {elapsed:.1f}s — {total:.1f} hrs, {prs} PRs, pattern: {busiest_time}")
 
     return {
         "langs": dict(sorted(lang_hours.items(), key=lambda x: x[1], reverse=True)),
@@ -209,4 +251,7 @@ def run_tracker(service, username: str, period_days: int,
         "repo_count": processed,
         "period_days": period_days,
         "username": username,
+        "prs": prs,
+        "issues": issues,
+        "busiest_time": busiest_time,
     }

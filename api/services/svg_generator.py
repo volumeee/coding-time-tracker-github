@@ -59,14 +59,17 @@ def generate_code_block(data: dict, langs_count: int = 10,
     frameworks = data.get("frameworks", {})
     period = data.get("period_days", 365)
     repo_count = data.get("repo_count", 0)
+    prs = data.get("prs", 0)
+    issues = data.get("issues", 0)
+    busiest = data.get("busiest_time", "Day Worker")
 
     top = dict(list(langs.items())[:langs_count])
     tl = sum(top.values()) or 1
     fw = dict(list(frameworks.items())[:langs_count]) if show_frameworks else {}
 
-    lines = [f"Coding Time Tracker🙆\u200d♂️ — {username}", "",
+    lines = [f"Coding Time Tracker🙆‍♂️ — {username}", "",
              f"Total Time: {_fmt(total_hours)}  ({period} days)",
-             f"Repos scanned: {repo_count}", "", "💻 Languages:"]
+             f"Repos scanned: {repo_count} | 🔀 PRs: {prs} | 🐞 Issues: {issues} | 🕒 Mode: {busiest}", "", "💻 Languages:"]
 
     if top:
         mn = max(len(n) for n in top)
@@ -147,11 +150,28 @@ def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
     if s_title:
         parts.append(f'<text x="{pad}" y="{y + 18}" class="t">📊 {_e(username)}\'s Coding Stats</text>')
         y += 32
-        # Stats pills row
+        
+        busiest = data.get("busiest_time", "Day Worker")
+        if "Owl" in busiest:
+            m_icon = "🦉"
+        elif "Bird" in busiest:
+            m_icon = "☀️"
+        elif "Evening" in busiest:
+            m_icon = "🌆"
+        else:
+            m_icon = "☕"
+
+        # Row 1
         parts.append(_stat_pill(pad, y, "⏱", "Total", _fms(total_hours), theme))
         parts.append(_stat_pill(pad + 140, y, "📁", "Repos", str(repo_count), theme))
         parts.append(_stat_pill(pad + 250, y, "📅", "Period", _pl(period), theme))
+        y += 32
+        # Row 2
+        parts.append(_stat_pill(pad, y, "🔀", "PRs", str(data.get("prs", 0)), theme))
+        parts.append(_stat_pill(pad + 140, y, "🐞", "Issues", str(data.get("issues", 0)), theme))
+        parts.append(_stat_pill(pad + 250, y, m_icon, "Mode", busiest, theme))
         y += 38
+
         # Gradient accent line
         parts.append(
             f'<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">'
@@ -265,9 +285,24 @@ def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
         parts.append(f'<text x="{pad}" y="24" class="t">📊 {_e(username)}\'s Coding Stats</text>')
         # Stats pills
         y_pill = 36
-        parts.append(_stat_pill(pad, y_pill, "⏱", "Total", _fms(total_hours), theme))
-        parts.append(_stat_pill(pad + 135, y_pill, "📁", "Repos", str(repo_count), theme))
-        parts.append(_stat_pill(pad + 240, y_pill, "📅", "Period", _pl(period), theme))
+        busiest = data.get("busiest_time", "Day Worker")
+        if "Owl" in busiest:
+            m_icon = "🦉"
+        elif "Bird" in busiest:
+            m_icon = "☀️"
+        elif "Evening" in busiest:
+            m_icon = "🌆"
+        else:
+            m_icon = "☕"
+
+        # Fit 6 pills in one row across 720px width
+        parts.append(_stat_pill(pad, y_pill, "⏱", "Time", _fms(total_hours), theme))
+        parts.append(_stat_pill(pad + 115, y_pill, "📁", "Repos", str(repo_count), theme))
+        parts.append(_stat_pill(pad + 230, y_pill, "📅", "Period", _pl(period), theme))
+        parts.append(_stat_pill(pad + 345, y_pill, "🔀", "PRs", str(data.get("prs", 0)), theme))
+        parts.append(_stat_pill(pad + 460, y_pill, "🐞", "Issues", str(data.get("issues", 0)), theme))
+        parts.append(_stat_pill(pad + 575, y_pill, m_icon, "Mode", busiest, theme))
+
         # Gradient accent
         parts.append(
             f'<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">'
