@@ -58,6 +58,7 @@ def get_stats(
     langs_count: int = Query(8, ge=1, le=20, description="Max languages to show"),
     period: int = Query(365, ge=7, le=3650, description="Period in days"),
     max_repos: int = Query(200, ge=1, le=500, description="Max repos to scan"),
+    ignore_langs: str = Query("", description="Comma-separated languages to ignore, e.g. HTML,CSS"),
     show_frameworks: bool = Query(True, description="Show frameworks section"),
     show_languages: bool = Query(True, description="Show languages section"),
     show_title: bool = Query(True, description="Show title/header"),
@@ -75,7 +76,9 @@ def get_stats(
         svg = generate_error_svg("GITHUB_TOKEN not configured on server.", theme)
         return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
 
-    cache_key = f"codestats:{username}:{period}:{max_repos}"
+    # Normalize ignored languages string for cache and passing
+    ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
+    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
 
     # Try cache first
     if not no_cache and cache.available:
@@ -92,7 +95,7 @@ def get_stats(
     logger.info(f"Processing stats for {username} (period={period}d, repos={max_repos})")
     try:
         service = GitHubService(token=GITHUB_TOKEN)
-        data = run_tracker(service, username, period, FW_MAPS, max_repos)
+        data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
 
         if data["total_hours"] == 0 and data["repo_count"] == 0:
             svg = generate_error_svg(
@@ -134,6 +137,7 @@ def get_json(
     username: str = Query(..., description="GitHub username"),
     period: int = Query(365, ge=7, le=3650),
     max_repos: int = Query(200, ge=1, le=500),
+    ignore_langs: str = Query(""),
     no_cache: bool = Query(False),
 ):
     """Return raw JSON stats (for programmatic use)."""
@@ -144,7 +148,8 @@ def get_json(
     if not GITHUB_TOKEN:
         return {"error": "GITHUB_TOKEN not configured"}
 
-    cache_key = f"codestats:{username}:{period}:{max_repos}"
+    ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
+    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
 
     if not no_cache and cache.available:
         cached = cache.get(cache_key)
@@ -152,7 +157,7 @@ def get_json(
             return cached
 
     service = GitHubService(token=GITHUB_TOKEN)
-    data = run_tracker(service, username, period, FW_MAPS, max_repos)
+    data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
 
     if cache.available:
         cache.set(cache_key, data, CACHE_TTL)
@@ -166,6 +171,7 @@ def get_code(
     langs_count: int = Query(10, ge=1, le=20),
     period: int = Query(365, ge=7, le=3650),
     max_repos: int = Query(200, ge=1, le=500),
+    ignore_langs: str = Query(""),
     show_frameworks: bool = Query(True),
     no_cache: bool = Query(False),
 ):
@@ -177,7 +183,8 @@ def get_code(
     if not GITHUB_TOKEN:
         return Response(content="Error: GITHUB_TOKEN not configured", media_type="text/plain")
 
-    cache_key = f"codestats:{username}:{period}:{max_repos}"
+    ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
+    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
     data = None
 
     if not no_cache and cache.available:
@@ -185,7 +192,7 @@ def get_code(
 
     if not data:
         service = GitHubService(token=GITHUB_TOKEN)
-        data = run_tracker(service, username, period, FW_MAPS, max_repos)
+        data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
         if cache.available:
             cache.set(cache_key, data, CACHE_TTL)
 

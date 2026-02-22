@@ -87,7 +87,7 @@ def is_valid_commit(commit: dict) -> bool:
 
 
 def process_single_repo(service, username: str, repo: dict,
-                         since_iso: str, until_iso: str, fw_maps: dict) -> dict:
+                         since_iso: str, until_iso: str, fw_maps: dict, ignore_langs: list) -> dict:
     """Process one repository: languages, commits, frameworks."""
     name = repo["name"]
     owner = repo.get("owner", {}).get("login", username)
@@ -100,6 +100,8 @@ def process_single_repo(service, username: str, repo: dict,
 
         # 1. Languages
         langs = service.get_languages(owner, name)
+        if ignore_langs and langs:
+            langs = {k: v for k, v in langs.items() if k.lower() not in ignore_langs}
         if not langs:
             return result
         result["langs"] = langs
@@ -129,7 +131,7 @@ def process_single_repo(service, username: str, repo: dict,
 
 
 def run_tracker(service, username: str, period_days: int,
-                fw_maps: dict, max_repos: int = 200) -> dict:
+                fw_maps: dict, max_repos: int = 200, ignore_langs: list = None) -> dict:
     """
     Main entry: fetch ALL repos, process in parallel, aggregate results.
     Returns {langs, frameworks, total_hours, repo_count, period_days, username}.
@@ -186,7 +188,7 @@ def run_tracker(service, username: str, period_days: int,
         futures = {
             pool.submit(
                 process_single_repo, service, username, repo,
-                since_iso, until_iso, fw_maps
+                since_iso, until_iso, fw_maps, ignore_langs or []
             ): repo
             for repo in repos_in_period
         }

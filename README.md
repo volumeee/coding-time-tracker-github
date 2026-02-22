@@ -145,7 +145,7 @@ GET https://coding-time-tracker-github.vercel.app/api/code?username=volumeee
 Coding Time Tracker🙆‍♂️ — volumeee
 
 Total Time: 38 hrs 21 mins  (365 days)
-Repos scanned: 6
+Repos scanned: 6 | 🔀 PRs: 12 | 🐞 Issues: 4 | 🕒 Mode: Night Owl
 
 💻 Languages:
 TypeScript   21 hrs 36 mins  ███████████░░░░░░░░░  56.30 %
@@ -178,6 +178,7 @@ FastAPI      ...
 | `langs_count`     | `int`    | `8`          | Max languages to show (1-20)                |
 | `period`          | `int`    | `365`        | Analysis period in days (7-3650)            |
 | `max_repos`       | `int`    | `200`        | Max repos to scan (1-500)                   |
+| `ignore_langs`    | `string` |              | Comma-separated languages to ignore         |
 | `show_frameworks` | `bool`   | `true`       | Show frameworks section                     |
 | `show_languages`  | `bool`   | `true`       | Show languages section                      |
 | `show_title`      | `bool`   | `true`       | Show header & stat pills                    |
@@ -193,17 +194,19 @@ Returns plain-text stats for README markdown embedding.
 | `username`        | `string` | **required** | GitHub username         |
 | `langs_count`     | `int`    | `10`         | Max languages           |
 | `period`          | `int`    | `365`        | Analysis period in days |
+| `ignore_langs`    | `string` |              | Languages to ignore     |
 | `show_frameworks` | `bool`   | `true`       | Include frameworks      |
 
 ### `GET /api/json` — Raw JSON
 
 Returns complete stats data as JSON for programmatic use.
 
-| Parameter   | Type     | Default      | Description             |
-| ----------- | -------- | ------------ | ----------------------- |
-| `username`  | `string` | **required** | GitHub username         |
-| `period`    | `int`    | `365`        | Analysis period in days |
-| `max_repos` | `int`    | `200`        | Max repos to scan       |
+| Parameter      | Type     | Default      | Description             |
+| -------------- | -------- | ------------ | ----------------------- |
+| `username`     | `string` | **required** | GitHub username         |
+| `period`       | `int`    | `365`        | Analysis period in days |
+| `max_repos`    | `int`    | `200`        | Max repos to scan       |
+| `ignore_langs` | `string` |              | Languages to ignore     |
 
 ### `GET /api/health` — Health Check
 
