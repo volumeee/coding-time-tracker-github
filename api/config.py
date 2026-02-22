@@ -35,11 +35,13 @@ FRAMEWORK_COLORS = {
     "Bootstrap": "#7952b3", "Sass": "#cf649a", "Redux": "#764abc",
     "Pinia": "#ffd859", "Vite": "#646cff", "Webpack": "#8dd6f9",
     "Jest": "#c21325", "Vitest": "#6e9f18", "Cypress": "#69d3a7",
-    "Prisma": "#5567e0", "Mongoose": "#880000", "Django": "#44b78b",
+    "Prisma": "#0c344b", "Mongoose": "#880000", "Django": "#44b78b",
     "FastAPI": "#009688", "Flask": "#808080", "Laravel": "#ff2d20",
     "Spring Boot": "#6db33f", "Android SDK": "#3ddc84", "Flutter": "#02569b",
     "Rails": "#cc0000", "Scrapy": "#60a839", "PyTorch": "#ee4c2c",
     "TensorFlow": "#ff6f00", "Pandas": "#150458", "NumPy": "#4d77cf",
+    "Astro": "#ff5a03", "SvelteKit": "#ff3e00", "Docker": "#2496ed",
+    "Kubernetes": "#326ce5", "GitHub Actions": "#2088ff", "GraphQL": "#e10098",
 }
 
 # === Framework detection maps ===
@@ -62,6 +64,7 @@ PACKAGE_JSON_FW = {
     "mocha": "Mocha", "vitest": "Vitest",
     "prisma": "Prisma", "@prisma/client": "Prisma",
     "mongoose": "Mongoose", "typeorm": "TypeORM", "sequelize": "Sequelize",
+    "astro": "Astro", "@sveltejs/kit": "SvelteKit", "graphql": "GraphQL",
 }
 
 REQUIREMENTS_FW = {

@@ -110,6 +110,20 @@ class GitHubService:
             f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
         )
 
+    def get_repo_root_files(self, owner: str, repo: str) -> list:
+        """Get names of all files in the root of the repository to detect tools quickly."""
+        data = self._request(f"https://api.github.com/repos/{owner}/{repo}/contents")
+        if isinstance(data, list):
+            return [str(item.get("name", "")).lower() for item in data]
+        return []
+
+    def has_github_actions(self, owner: str, repo: str) -> bool:
+        """Check if .github/workflows exists."""
+        data = self._request(f"https://api.github.com/repos/{owner}/{repo}/contents/.github")
+        if isinstance(data, list):
+            return any(item.get("name") == "workflows" for item in data)
+        return False
+
     def get_file_content(self, owner: str, repo: str, path: str) -> Optional[str]:
         """Get decoded file content from a repository."""
         data = self._request(
@@ -148,6 +162,27 @@ class GitHubService:
 
         if not checks:
             checks.append(("package.json", "json", fw_maps.get("package_json", {})))
+
+        # Fast Tool Detection via Root Files (No need to download entire files)
+        root_files = self.get_repo_root_files(owner, repo)
+        if "dockerfile" in root_files or "docker-compose.yml" in root_files or "docker-compose.yaml" in root_files:
+            frameworks.add("Docker")
+        if "tailwind.config.js" in root_files or "tailwind.config.ts" in root_files:
+            frameworks.add("Tailwind CSS")
+        if "next.config.js" in root_files or "next.config.ts" in root_files or "next.config.mjs" in root_files:
+            frameworks.add("Next.js")
+        if "svelte.config.js" in root_files:
+            frameworks.add("SvelteKit")
+        if "astro.config.mjs" in root_files or "astro.config.js" in root_files:
+            frameworks.add("Astro")
+        if "prisma" in root_files: # folder
+            frameworks.add("Prisma")
+        if any(f.endswith(".k8s.yaml") or f.endswith("deployment.yaml") for f in root_files):
+            frameworks.add("Kubernetes")
+
+        # Github Actions Check
+        if ".github" in root_files and self.has_github_actions(owner, repo):
+            frameworks.add("GitHub Actions")
 
         for file_path, parse_mode, mapping in checks:
             content = self.get_file_content(owner, repo, file_path)
