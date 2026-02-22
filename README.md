@@ -144,24 +144,61 @@ GET https://coding-time-tracker-github.vercel.app/api/code?username=volumeee
 ```text
 Coding Time Tracker🙆‍♂️ — volumeee
 
-Total Time: 38 hrs 21 mins  (365 days)
-Repos scanned: 6 | 🔀 PRs: 12 | 🐞 Issues: 4 | 🕒 Mode: Night Owl
+Total Time: 128 hrs 24 mins  (365 days)
+Repos scanned: 14 | 🔀 PRs: 29 | 🐞 Issues: 0 | 🕒 Mode: Day Worker
 
 💻 Languages:
-TypeScript   21 hrs 36 mins  ███████████░░░░░░░░░  56.30 %
-JavaScript   10 hrs 3 mins   █████░░░░░░░░░░░░░░░  26.20 %
-Python       3 hrs 21 mins   █░░░░░░░░░░░░░░░░░░░   8.70 %
-HTML         2 hrs 44 mins   █░░░░░░░░░░░░░░░░░░░   7.20 %
-PLpgSQL      0 hrs 19 mins   ░░░░░░░░░░░░░░░░░░░░   0.90 %
-CSS          0 hrs 9 mins    ░░░░░░░░░░░░░░░░░░░░   0.40 %
-Dockerfile   0 hrs 5 mins    ░░░░░░░░░░░░░░░░░░░░   0.30 %
-
-⚡ Frameworks & Tools:
-Express.js   ...
-FastAPI      ...
+JavaScript   42 hrs 56 mins  ██████░░░░░░░░░░░░░░  33.48 %
+TypeScript   36 hrs 54 mins  █████░░░░░░░░░░░░░░░  28.78 %
+Vue          24 hrs 26 mins  ███░░░░░░░░░░░░░░░░░  19.06 %
+C++          14 hrs 14 mins  ██░░░░░░░░░░░░░░░░░░  11.11 %
+Python       4 hrs 11 mins   ░░░░░░░░░░░░░░░░░░░░   3.27 %
+HTML         2 hrs 39 mins   ░░░░░░░░░░░░░░░░░░░░   2.07 %
+C            1 hrs 42 mins   ░░░░░░░░░░░░░░░░░░░░   1.33 %
+CSS          0 hrs 36 mins   ░░░░░░░░░░░░░░░░░░░░   0.48 %
+PLpgSQL      0 hrs 23 mins   ░░░░░░░░░░░░░░░░░░░░   0.30 %
+PowerShell   0 hrs 9 mins    ░░░░░░░░░░░░░░░░░░░░   0.13 %
 ```
 
 <!-- language_times_end -->
+
+#### 🔄 How to make it auto-update (Live)
+
+Since markdown doesn't support embedding dynamic text via URLs directly, you need a GitHub Action to keep this text block updated on your profile.
+
+1. Add these tags anywhere in your repository's `README.md`:
+   ```html
+   <!-- language_times_start -->
+   <!-- language_times_end -->
+   ```
+2. Create a file `.github/workflows/update-codestats.yml` in your repository:
+
+   ````yaml
+   name: Update CodeStats
+   on:
+     schedule:
+       - cron: "0 */12 * * *" # Runs every 12 hours
+     workflow_dispatch:
+
+   jobs:
+     update-readme:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v3
+         - name: Fetch and Update Code Block
+           run: |
+             STATS=$(curl -s "https://coding-time-tracker-github.vercel.app/api/code?username=YOUR_USERNAME_HERE")
+             awk -v stats="$STATS" '/<!-- language_times_start -->/ { print; print "```text\n" stats "\n```"; skip=1; next } /<!-- language_times_end -->/ { skip=0 } !skip { print }' README.md > README.tmp && mv README.tmp README.md
+         - name: Commit Changes
+           run: |
+             git config --local user.email "action@github.com"
+             git config --local user.name "GitHub Action"
+             git add README.md
+             git commit -m "📊 Auto-update code stats" || exit 0
+             git push
+   ````
+
+   _(Replace `YOUR_USERNAME_HERE` with your GitHub username)._
 
 ---
 
