@@ -50,6 +50,7 @@ Add this to your GitHub profile README — just replace `volumeee` with your Git
 | 📱 **Responsive SVG**      | Auto-scales on desktop, tablet, and mobile           |
 | 🌈 **Language Bar**        | GitHub-style combined proportion bar                 |
 | 🔵 **Color Dots**          | Visual language indicators (like GitHub)             |
+| 🔒 **Private Repos**       | Scans all repositories securely via GitHub token     |
 | ⏱️ **Stat Pills**          | Total hours, repos scanned, time period              |
 | 💬 **3 Formats**           | SVG Card, Code Block (text), JSON                    |
 | 🚀 **Redis Cache**         | Upstash Redis for fast responses                     |
@@ -175,7 +176,7 @@ FastAPI      ...
 | `width`           | `int`    | auto         | Card width in px (0 = auto)                 |
 | `langs_count`     | `int`    | `8`          | Max languages to show (1-20)                |
 | `period`          | `int`    | `365`        | Analysis period in days (7-3650)            |
-| `max_repos`       | `int`    | `50`         | Max repos to scan (1-100)                   |
+| `max_repos`       | `int`    | `200`        | Max repos to scan (1-500)                   |
 | `show_frameworks` | `bool`   | `true`       | Show frameworks section                     |
 | `show_languages`  | `bool`   | `true`       | Show languages section                      |
 | `show_title`      | `bool`   | `true`       | Show header & stat pills                    |
@@ -201,7 +202,7 @@ Returns complete stats data as JSON for programmatic use.
 | ----------- | -------- | ------------ | ----------------------- |
 | `username`  | `string` | **required** | GitHub username         |
 | `period`    | `int`    | `365`        | Analysis period in days |
-| `max_repos` | `int`    | `50`         | Max repos to scan       |
+| `max_repos` | `int`    | `200`        | Max repos to scan       |
 
 ### `GET /api/health` — Health Check
 
@@ -319,11 +320,11 @@ GitHub API  →  Fetch Repos  →  Analyze Commits  →  Calculate Time
                     SVG/Text/JSON  ←  Generate Card  ←  Detect Frameworks
 ```
 
-1. **Fetches repos** via GitHub API for the given username
-2. **Analyzes commits** to calculate coding time per language (session-based)
+1. **Fetches ALL repos** (public + private) securely via the authenticated GitHub API
+2. **Analyzes commits** using intelligent session-gap detection (filters auto-commits, merges, bots)
 3. **Detects frameworks** by parsing config files (`package.json`, `requirements.txt`, etc.)
-4. **Generates output** — SVG card, text block, or JSON
-5. **Caches results** in Upstash Redis (12-hour TTL)
+4. **Generates output** — Responsive SVG card, text block, or JSON
+5. **Caches results** in Upstash Redis (12-hour TTL) for instant loading
 
 ### Supported Framework Detection
 
