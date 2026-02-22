@@ -51,6 +51,7 @@ Add this to your GitHub profile README — just replace `volumeee` with your Git
 | 🌈 **Language Bar**        | GitHub-style combined proportion bar                 |
 | 🔵 **Color Dots**          | Visual language indicators (like GitHub)             |
 | 🔒 **Private Repos**       | Scans all repositories securely via GitHub token     |
+| 🛡️ **Rate Limiter**        | Built-in Anti-DDoS protection via Upstash Redis      |
 | ⏱️ **Stat Pills**          | Total hours, repos scanned, time period              |
 | 💬 **3 Formats**           | SVG Card, Code Block (text), JSON                    |
 | 🚀 **Redis Cache**         | Upstash Redis for fast responses                     |

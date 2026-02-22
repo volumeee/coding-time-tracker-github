@@ -15,7 +15,7 @@ from config import (
     PACKAGE_JSON_FW,
     REQUIREMENTS_FW,
 )
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 from services.cache import CacheService
 from services.github_service import GitHubService
@@ -50,6 +50,7 @@ SVG_HEADERS = {
 
 @app.get("/api")
 def get_stats(
+    request: Request,
     username: str = Query(..., description="GitHub username"),
     theme: str = Query("dark", description="Theme: dark, light, radical, tokyonight"),
     layout: str = Query("landscape", description="Layout: landscape or portrait"),
@@ -64,6 +65,12 @@ def get_stats(
     no_cache: bool = Query(False, description="Force refresh data"),
 ):
     """Generate an SVG coding stats card for the given username."""
+    # Rate limit: 30 requests per minute per IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not cache.check_rate_limit(f"req:{client_ip}", limit=30, window=60):
+        svg = generate_error_svg("Rate limit exceeded (30 req/min). Please try again later.", theme)
+        return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
+
     if not GITHUB_TOKEN:
         svg = generate_error_svg("GITHUB_TOKEN not configured on server.", theme)
         return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
@@ -123,12 +130,17 @@ def health():
 
 @app.get("/api/json")
 def get_json(
+    request: Request,
     username: str = Query(..., description="GitHub username"),
     period: int = Query(365, ge=7, le=3650),
     max_repos: int = Query(200, ge=1, le=500),
     no_cache: bool = Query(False),
 ):
     """Return raw JSON stats (for programmatic use)."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not cache.check_rate_limit(f"req:{client_ip}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded (30 req/min)")
+
     if not GITHUB_TOKEN:
         return {"error": "GITHUB_TOKEN not configured"}
 
@@ -149,6 +161,7 @@ def get_json(
 
 @app.get("/api/code")
 def get_code(
+    request: Request,
     username: str = Query(..., description="GitHub username"),
     langs_count: int = Query(10, ge=1, le=20),
     period: int = Query(365, ge=7, le=3650),
@@ -157,6 +170,10 @@ def get_code(
     no_cache: bool = Query(False),
 ):
     """Return text-based code block stats (for README markdown)."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not cache.check_rate_limit(f"req:{client_ip}", limit=30, window=60):
+        return Response(content="Error: Rate limit exceeded (30 req/min). Please try again later.", media_type="text/plain")
+
     if not GITHUB_TOKEN:
         return Response(content="Error: GITHUB_TOKEN not configured", media_type="text/plain")
 

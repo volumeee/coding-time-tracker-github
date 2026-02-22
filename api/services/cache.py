@@ -52,3 +52,17 @@ class CacheService:
             self._redis.delete(key)
         except Exception as e:
             logger.warning(f"Cache DELETE error: {e}")
+
+    def check_rate_limit(self, identifier: str, limit: int = 30, window: int = 60) -> bool:
+        """Simple fixed-window rate limiter utilizing Redis INCR."""
+        if not self._redis:
+            return True  # If cache is unavailable, fallback to allow
+        key = f"rl:{identifier}"
+        try:
+            current = self._redis.incr(key)
+            if current == 1:
+                self._redis.expire(key, window)
+            return current <= limit
+        except Exception as e:
+            logger.warning(f"Rate limit error: {e}")
+            return True
