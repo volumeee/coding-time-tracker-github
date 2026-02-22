@@ -138,7 +138,6 @@ def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
     top = dict(list(langs.items())[:lc])
     tl = sum(top.values()) or 1
     fws = list(frameworks.keys()) if s_fw else []
-    top_lang = list(langs.keys())[0] if langs else "N/A"
 
     pad = 22
     y = pad
@@ -244,7 +243,6 @@ def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
     top = dict(list(langs.items())[:lc])
     tl = sum(top.values()) or 1
     fws = list(frameworks.keys()) if s_fw else []
-    top_lang = list(langs.keys())[0] if langs else "N/A"
 
     pad = 22
     row_h = 26

@@ -27,7 +27,7 @@ class GitHubService:
             url = f"{url}?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, headers=self.headers)
         try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code != 404:
@@ -37,20 +37,58 @@ class GitHubService:
             logger.error(f"Request error: {e}")
             return None
 
-    def get_repos(self, username: str, max_repos: int = 50) -> list:
-        """Fetch public repos sorted by most recently pushed."""
-        repos, page = [], 1
+    def _paginate(self, url: str, params: dict, max_items: int = 0) -> list:
+        """Paginate through all pages of a GitHub API endpoint."""
+        items, page = [], 1
         while True:
-            data = self._request(
-                f"https://api.github.com/users/{username}/repos",
-                {"page": page, "per_page": 100, "sort": "pushed", "direction": "desc"},
-            )
+            p = {**params, "page": page, "per_page": 100}
+            data = self._request(url, p)
             if not data or not isinstance(data, list):
                 break
-            repos.extend(data)
+            items.extend(data)
             if len(data) < 100:
                 break
             page += 1
+            # Safety: GitHub API has limits
+            if page > 20:
+                break
+        if max_items > 0:
+            return items[:max_items]
+        return items
+
+    def get_repos(self, username: str, max_repos: int = 200,
+                  include_forks: bool = False) -> list:
+        """Fetch ALL repos (public + private if token has access).
+
+        Uses /user/repos (authenticated) to include private repos,
+        falls back to /users/{username}/repos if that fails.
+        """
+        # Try authenticated endpoint first — includes private repos
+        repos = self._paginate(
+            "https://api.github.com/user/repos",
+            {"sort": "pushed", "direction": "desc",
+             "affiliation": "owner", "visibility": "all"},
+            max_items=max_repos,
+        )
+
+        # Filter to only repos owned by username
+        if repos:
+            repos = [r for r in repos
+                     if r.get("owner", {}).get("login", "").lower() == username.lower()]
+
+        # Fallback to public endpoint if authenticated didn't work
+        if not repos:
+            repos = self._paginate(
+                f"https://api.github.com/users/{username}/repos",
+                {"sort": "pushed", "direction": "desc"},
+                max_items=max_repos,
+            )
+
+        # Optionally filter out forks
+        if not include_forks:
+            repos = [r for r in repos if not r.get("fork", False)]
+
+        logger.info(f"Fetched {len(repos)} repos for {username}")
         return repos[:max_repos]
 
     def get_languages(self, owner: str, repo: str) -> dict:
@@ -60,21 +98,17 @@ class GitHubService:
 
     def get_commits(self, owner: str, repo: str, author: str,
                     since: str, until: str) -> list:
-        """Fetch commits for a repo within a date range."""
-        all_commits, page = [], 1
-        while True:
-            data = self._request(
-                f"https://api.github.com/repos/{owner}/{repo}/commits",
-                {"author": author, "since": since, "until": until,
-                 "page": page, "per_page": 100},
-            )
-            if not data or not isinstance(data, list):
-                break
-            all_commits.extend(data)
-            if len(data) < 100:
-                break
-            page += 1
-        return all_commits
+        """Fetch all commits for a repo within a date range."""
+        return self._paginate(
+            f"https://api.github.com/repos/{owner}/{repo}/commits",
+            {"author": author, "since": since, "until": until},
+        )
+
+    def get_commit_detail(self, owner: str, repo: str, sha: str) -> Optional[dict]:
+        """Get detailed commit info including stats (additions/deletions)."""
+        return self._request(
+            f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}"
+        )
 
     def get_file_content(self, owner: str, repo: str, path: str) -> Optional[str]:
         """Get decoded file content from a repository."""
@@ -147,7 +181,6 @@ class GitHubService:
                 for key, name in mapping.items():
                     if key in lower:
                         frameworks.add(name)
-                # Special: Android SDK
                 if file_path == "build.gradle":
                     if "com.android.application" in lower:
                         frameworks.add("Android SDK")

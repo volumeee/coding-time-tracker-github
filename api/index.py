@@ -56,7 +56,7 @@ def get_stats(
     width: int = Query(0, ge=0, le=1200, description="Card width in px (0=auto)"),
     langs_count: int = Query(8, ge=1, le=20, description="Max languages to show"),
     period: int = Query(365, ge=7, le=3650, description="Period in days"),
-    max_repos: int = Query(50, ge=1, le=100, description="Max repos to scan"),
+    max_repos: int = Query(200, ge=1, le=500, description="Max repos to scan"),
     show_frameworks: bool = Query(True, description="Show frameworks section"),
     show_languages: bool = Query(True, description="Show languages section"),
     show_title: bool = Query(True, description="Show title/header"),
@@ -125,7 +125,7 @@ def health():
 def get_json(
     username: str = Query(..., description="GitHub username"),
     period: int = Query(365, ge=7, le=3650),
-    max_repos: int = Query(50, ge=1, le=100),
+    max_repos: int = Query(200, ge=1, le=500),
     no_cache: bool = Query(False),
 ):
     """Return raw JSON stats (for programmatic use)."""
@@ -152,7 +152,7 @@ def get_code(
     username: str = Query(..., description="GitHub username"),
     langs_count: int = Query(10, ge=1, le=20),
     period: int = Query(365, ge=7, le=3650),
-    max_repos: int = Query(50, ge=1, le=100),
+    max_repos: int = Query(200, ge=1, le=500),
     show_frameworks: bool = Query(True),
     no_cache: bool = Query(False),
 ):
