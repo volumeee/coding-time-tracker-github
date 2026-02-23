@@ -93,43 +93,116 @@ def generate_code_block(data: dict, langs_count: int = 10,
 #  SVG - PREMIUM DESIGN
 # ═══════════════════════════════════════════════════════════════════
 
+_clip_counter = 0
+
 def _lang_stripe(langs: dict, total: float, vw: int, y: int, pad: int) -> str:
-    """Combined GitHub-style language proportion bar."""
+    """Combined GitHub-style language proportion bar with proper unified rounding."""
+    global _clip_counter
+    _clip_counter += 1
     bar_w = vw - pad * 2
+    bar_h = 10
+    radius = 5
     x = pad
     parts = []
     items = list(langs.items())
+
+    # Use clipPath for clean unified rounded bar (unique ID per invocation)
+    clip_id = f"sc{_clip_counter}"
+    parts.append(
+        f'<defs><clipPath id="{clip_id}">'
+        f'<rect x="{pad}" y="{y}" width="{bar_w}" height="{bar_h}" rx="{radius}"/>'
+        f'</clipPath></defs>'
+    )
+
     for i, (lang, hrs) in enumerate(items):
         w = max(2, hrs / total * bar_w)
         col = LANGUAGE_COLORS.get(lang, "#8b8b8b")
-        rx_l = "6" if i == 0 else "0"
-        rx_r = "6" if i == len(items) - 1 else "0"
         parts.append(
-            f'<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="10" fill="{col}"'
-            f' rx="{rx_l}" ry="{rx_r}"/>'
+            f'<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{bar_h}" '
+            f'fill="{col}" clip-path="url(#{clip_id})"/>'
         )
         x += w
     return "\n  ".join(parts)
 
 
 def _stat_pill(x: int, y: int, icon: str, label: str, value: str, theme: dict) -> str:
-    """Rounded stat indicator pill."""
-    w = max(len(f"{label}: {value}") * 6.5 + 30, 80)
+    """Rounded stat indicator pill with consistent sizing."""
+    text = f"{label}: {value}"
+    w = max(len(text) * 7 + 28, 90)
     return (
         f'<rect x="{x}" y="{y}" width="{w:.0f}" height="26" rx="13" '
-        f'fill="{theme["bar_bg"]}" opacity="0.8"/>'
+        f'fill="{theme["bar_bg"]}" opacity="0.9"/>'
         f'<text x="{x + 14}" y="{y + 17}" class="pill">'
         f'{icon} {_e(label)}: <tspan class="pv">{_e(value)}</tspan></text>'
     )
 
 
+def _build_pills_row(data: dict, theme: dict, pad: int, y: int, vw: int) -> tuple:
+    """Build stat pills that adapt to available width. Returns (svg_parts, new_y)."""
+    total_hours = data.get("total_hours", 0)
+    repo_count = data.get("repo_count", 0)
+    period = data.get("period_days", 365)
+    prs = data.get("prs", 0)
+    issues = data.get("issues", 0)
+    busiest = data.get("busiest_time", "Day Worker")
+
+    if "Owl" in busiest:
+        m_icon = "🦉"
+    elif "Bird" in busiest:
+        m_icon = "☀️"
+    elif "Evening" in busiest:
+        m_icon = "🌆"
+    else:
+        m_icon = "☕"
+
+    pills = [
+        ("⏱", "Time", _fms(total_hours)),
+        ("📁", "Repos", str(repo_count)),
+        ("📅", "Period", _pl(period)),
+        ("🔀", "PRs", str(prs)),
+        ("🐞", "Issues", str(issues)),
+        (m_icon, "Mode", busiest),
+    ]
+
+    # Calculate pill widths
+    pill_data = []
+    for icon, label, value in pills:
+        text = f"{label}: {value}"
+        w = max(len(text) * 7 + 28, 90)
+        pill_data.append((icon, label, value, w))
+
+    available_w = vw - pad * 2
+    parts = []
+    cx = pad
+    cy = y
+    gap = 8
+
+    for icon, label, value, w in pill_data:
+        if cx + w > pad + available_w and cx > pad:
+            # Wrap to next row
+            cx = pad
+            cy += 32
+        parts.append(_stat_pill(int(cx), cy, icon, label, value, theme))
+        cx += w + gap
+
+    return parts, cy + 32
+
+
+def _gradient_accent(theme: dict, pad: int, y: int, vw: int) -> str:
+    """Gradient accent separator line."""
+    return (
+        f'<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">'
+        f'<stop offset="0%" stop-color="{theme["title"]}"/>'
+        f'<stop offset="100%" stop-color="{theme["title"]}" stop-opacity="0.1"/>'
+        f'</linearGradient></defs>'
+        f'<rect x="{pad}" y="{y}" width="{vw - pad * 2}" height="2" rx="1" fill="url(#g1)"/>'
+    )
+
+
 def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
     username = data.get("username", "user")
-    total_hours = data.get("total_hours", 0)
     langs = data.get("langs", {})
     frameworks = data.get("frameworks", {})
-    period = data.get("period_days", 365)
-    repo_count = data.get("repo_count", 0)
 
     vw = opts.get("width", 480)
     lc = opts.get("langs_count", 8)
@@ -142,91 +215,78 @@ def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
     tl = sum(top.values()) or 1
     fws = list(frameworks.keys()) if s_fw else []
 
-    pad = 22
+    pad = 24
     y = pad
     parts = []
 
-    # ── Header with accent ──
+    # ── Header ──
     if s_title:
         parts.append(f'<text x="{pad}" y="{y + 18}" class="t">📊 {_e(username)}\'s Coding Stats</text>')
-        y += 32
-        
-        busiest = data.get("busiest_time", "Day Worker")
-        if "Owl" in busiest:
-            m_icon = "🦉"
-        elif "Bird" in busiest:
-            m_icon = "☀️"
-        elif "Evening" in busiest:
-            m_icon = "🌆"
-        else:
-            m_icon = "☕"
+        y += 34
 
-        # Row 1
-        parts.append(_stat_pill(pad, y, "⏱", "Total", _fms(total_hours), theme))
-        parts.append(_stat_pill(pad + 140, y, "📁", "Repos", str(repo_count), theme))
-        parts.append(_stat_pill(pad + 250, y, "📅", "Period", _pl(period), theme))
-        y += 32
-        # Row 2
-        parts.append(_stat_pill(pad, y, "🔀", "PRs", str(data.get("prs", 0)), theme))
-        parts.append(_stat_pill(pad + 140, y, "🐞", "Issues", str(data.get("issues", 0)), theme))
-        parts.append(_stat_pill(pad + 250, y, m_icon, "Mode", busiest, theme))
-        y += 38
+        pill_parts, y = _build_pills_row(data, theme, pad, y, vw)
+        parts.extend(pill_parts)
+        y += 6
 
-        # Gradient accent line
-        parts.append(
-            f'<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">'
-            f'<stop offset="0%" stop-color="{theme["title"]}"/>'
-            f'<stop offset="100%" stop-color="{theme["title"]}" stop-opacity="0.1"/>'
-            f'</linearGradient></defs>'
-            f'<rect x="{pad}" y="{y}" width="{vw - pad * 2}" height="2" rx="1" fill="url(#g1)"/>'
-        )
-        y += 12
+        parts.append(_gradient_accent(theme, pad, y, vw))
+        y += 14
 
     # ── Combined language bar ──
     if s_lang and top:
         parts.append(_lang_stripe(top, tl, vw, y, pad))
         y += 20
 
-        # Language list with colored dots
+        # Language section header
         parts.append(f'<text x="{pad}" y="{y + 14}" class="sec">💻 Languages</text>')
-        y += 26
-        bar_w = vw - pad * 2 - 180
-        if bar_w < 50:
-            bar_w = 50
+        y += 28
+
+        # Calculate column positions for portrait — compact layout
+        name_col = pad + 14  # After color dot
+        bar_x = pad + 90    # Bar start
+        right_edge = vw - pad
+        # Reserve space for "31.8% 57h 37m" = ~100px
+        info_width = 100
+        bar_w = right_edge - bar_x - info_width - 8
+        if bar_w < 60:
+            bar_w = 60
+        pct_x = bar_x + bar_w + 8
+
+        bar_h = 12
+        row_h = 30
+
         for lang, hrs in top.items():
             pct = hrs / tl * 100
-            bw = max(2, pct / 100 * bar_w)
+            bw = max(3, pct / 100 * bar_w)
             col = LANGUAGE_COLORS.get(lang, "#8b8b8b")
-            bx = pad + 95
             parts.append(
                 f'<g transform="translate(0,{y})">'
-                f'<circle cx="{pad + 5}" cy="-3" r="4" fill="{col}"/>'
-                f'<text x="{pad + 14}" y="0" class="l">{_e(lang)}</text>'
-                f'<rect x="{bx}" y="-8" width="{bar_w}" height="8" rx="4" fill="{theme["bar_bg"]}"/>'
-                f'<rect x="{bx}" y="-8" width="{bw:.1f}" height="8" rx="4" fill="{col}">'
-                f'<animate attributeName="width" from="0" to="{bw:.1f}" dur="0.6s" fill="freeze" begin="0.2s"/></rect>'
-                f'<text x="{bx + bar_w + 8}" y="0" class="p">{pct:.1f}%</text>'
-                f'<text x="{vw - pad}" y="0" class="tm" text-anchor="end">{_fms(hrs)}</text>'
+                f'<circle cx="{pad + 5}" cy="-3" r="4.5" fill="{col}"/>'
+                f'<text x="{name_col}" y="0" class="l">{_e(lang)}</text>'
+                f'<rect x="{bar_x}" y="-8" width="{bar_w}" height="{bar_h}" rx="{bar_h // 2}" fill="{theme["bar_bg"]}"/>'
+                f'<rect x="{bar_x}" y="-8" width="{bw:.1f}" height="{bar_h}" rx="{bar_h // 2}" fill="{col}">'
+                f'<animate attributeName="width" from="0" to="{bw:.1f}" dur="0.8s" fill="freeze" begin="0.15s"/></rect>'
+                f'<text x="{pct_x}" y="-5" class="p">{pct:.1f}%</text>'
+                f'<text x="{pct_x}" y="8" class="tm">{_fms(hrs)}</text>'
                 f'</g>'
             )
-            y += 26
+            y += row_h
 
     # ── Frameworks ──
     if s_fw and fws:
-        y += 10
+        y += 14
         parts.append(f'<text x="{pad}" y="{y + 14}" class="sec">⚡ Frameworks &amp; Tools</text>')
-        y += 28
+        y += 30
         fx = pad
         for fw in fws:
             bc = FRAMEWORK_COLORS.get(fw, "#555555")
             tc = _tc(bc)
-            tw = len(fw) * 7.2 + 20
+            tw = len(fw) * 7.5 + 22
             if fx + tw > vw - pad:
                 fx = pad
-                y += 28
+                y += 30
             parts.append(
-                f'<rect x="{fx}" y="{y - 15}" width="{tw:.0f}" height="24" rx="12" '
-                f'fill="{bc}" opacity="0.85"/>'
+                f'<rect x="{fx}" y="{y - 16}" width="{tw:.0f}" height="26" rx="13" '
+                f'fill="{bc}" opacity="0.9"/>'
                 f'<text x="{fx + tw / 2:.0f}" y="{y + 1}" text-anchor="middle" '
                 f'class="b" fill="{tc}">{_e(fw)}</text>'
             )
@@ -235,23 +295,20 @@ def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
 
     # ── Footer ──
     if s_footer:
-        y += 14
+        y += 16
         parts.append(
             f'<text x="{vw // 2}" y="{y}" text-anchor="middle" class="f">'
             f'CodeStats · github.com/volumeee</text>'
         )
-        y += 8
+        y += 10
 
-    return _svg(vw, y + 10, theme, "\n  ".join(parts))
+    return _svg(vw, y + 12, theme, "\n  ".join(parts))
 
 
 def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
     username = data.get("username", "user")
-    total_hours = data.get("total_hours", 0)
     langs = data.get("langs", {})
     frameworks = data.get("frameworks", {})
-    period = data.get("period_days", 365)
-    repo_count = data.get("repo_count", 0)
 
     vw = opts.get("width", 720)
     lc = opts.get("langs_count", 8)
@@ -264,84 +321,64 @@ def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
     tl = sum(top.values()) or 1
     fws = list(frameworks.keys()) if s_fw else []
 
-    pad = 22
-    row_h = 26
+    pad = 24
+    row_h = 28
     header_h = 0
 
-    # Column math: name(80) + time(85) + bar(130) + pct(45) + gaps
-    name_w, time_w, bar_w, pct_w = 80, 85, 130, 45
-    left_block = name_w + time_w + bar_w + pct_w + 30
-    divider_x = pad + left_block
-    if divider_x > vw * 0.62:
-        divider_x = int(vw * 0.62)
-        bar_w = divider_x - pad - name_w - time_w - pct_w - 30
-        if bar_w < 60:
-            bar_w = 60
+    # ── Layout math ──
+    # Left side: languages | Right side: frameworks
+    # Divider at ~62% of width
+    divider_x = int(vw * 0.62)
+
+    # Column positions for language rows (left side)
+    name_col = pad + 14  # After color dot
+    time_col = pad + 95  # Time column
+    bar_x = pad + 155    # Bar start
+    bar_w = divider_x - bar_x - 60  # Bar width (leave room for %)
+    if bar_w < 60:
+        bar_w = 60
+    pct_x = bar_x + bar_w + 10  # Percentage text
+
+    bar_h = 12
 
     parts = []
 
     # ── Header ──
     if s_title:
         parts.append(f'<text x="{pad}" y="24" class="t">📊 {_e(username)}\'s Coding Stats</text>')
-        # Stats pills
-        y_pill = 36
-        busiest = data.get("busiest_time", "Day Worker")
-        if "Owl" in busiest:
-            m_icon = "🦉"
-        elif "Bird" in busiest:
-            m_icon = "☀️"
-        elif "Evening" in busiest:
-            m_icon = "🌆"
-        else:
-            m_icon = "☕"
 
-        # Fit 6 pills in one row across 720px width
-        parts.append(_stat_pill(pad, y_pill, "⏱", "Time", _fms(total_hours), theme))
-        parts.append(_stat_pill(pad + 115, y_pill, "📁", "Repos", str(repo_count), theme))
-        parts.append(_stat_pill(pad + 230, y_pill, "📅", "Period", _pl(period), theme))
-        parts.append(_stat_pill(pad + 345, y_pill, "🔀", "PRs", str(data.get("prs", 0)), theme))
-        parts.append(_stat_pill(pad + 460, y_pill, "🐞", "Issues", str(data.get("issues", 0)), theme))
-        parts.append(_stat_pill(pad + 575, y_pill, m_icon, "Mode", busiest, theme))
+        pill_parts, pill_end_y = _build_pills_row(data, theme, pad, 36, vw)
+        parts.extend(pill_parts)
 
-        # Gradient accent
-        parts.append(
-            f'<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">'
-            f'<stop offset="0%" stop-color="{theme["title"]}"/>'
-            f'<stop offset="100%" stop-color="{theme["title"]}" stop-opacity="0.1"/>'
-            f'</linearGradient></defs>'
-            f'<rect x="{pad}" y="68" width="{vw - pad * 2}" height="2" rx="1" fill="url(#g1)"/>'
-        )
-        header_h = 78
+        accent_y = pill_end_y + 4
+        parts.append(_gradient_accent(theme, pad, accent_y, vw))
+        header_h = accent_y + 10
     else:
         header_h = 10
 
     # ── Combined language stripe ──
     if s_lang and top:
         parts.append(_lang_stripe(top, tl, vw, header_h + 4, pad))
-        header_h += 18
+        header_h += 20
 
     # ── Languages (left) ──
     y = header_h + 16
     if s_lang and top:
         parts.append(f'<text x="{pad}" y="{y}" class="sec">💻 Languages</text>')
-        y += 18
+        y += 20
         for lang, hrs in top.items():
             pct = hrs / tl * 100
-            bw = max(2, pct / 100 * bar_w)
+            bw = max(3, pct / 100 * bar_w)
             col = LANGUAGE_COLORS.get(lang, "#8b8b8b")
-            xn = pad
-            xt = pad + name_w
-            xb = pad + name_w + time_w
-            xp = pad + name_w + time_w + bar_w + 8
             parts.append(
                 f'<g transform="translate(0,{y})">'
-                f'<circle cx="{xn + 4}" cy="-3" r="3.5" fill="{col}"/>'
-                f'<text x="{xn + 13}" y="0" class="l">{_e(lang)}</text>'
-                f'<text x="{xt}" y="0" class="tm">{_fms(hrs)}</text>'
-                f'<rect x="{xb}" y="-7" width="{bar_w}" height="7" rx="3.5" fill="{theme["bar_bg"]}"/>'
-                f'<rect x="{xb}" y="-7" width="{bw:.1f}" height="7" rx="3.5" fill="{col}">'
-                f'<animate attributeName="width" from="0" to="{bw:.1f}" dur="0.6s" fill="freeze" begin="0.2s"/></rect>'
-                f'<text x="{xp}" y="0" class="p">{pct:.1f}%</text>'
+                f'<circle cx="{pad + 5}" cy="-3" r="4" fill="{col}"/>'
+                f'<text x="{name_col}" y="0" class="l">{_e(lang)}</text>'
+                f'<text x="{time_col}" y="0" class="tm">{_fms(hrs)}</text>'
+                f'<rect x="{bar_x}" y="-8" width="{bar_w}" height="{bar_h}" rx="{bar_h // 2}" fill="{theme["bar_bg"]}"/>'
+                f'<rect x="{bar_x}" y="-8" width="{bw:.1f}" height="{bar_h}" rx="{bar_h // 2}" fill="{col}">'
+                f'<animate attributeName="width" from="0" to="{bw:.1f}" dur="0.8s" fill="freeze" begin="0.15s"/></rect>'
+                f'<text x="{pct_x}" y="0" class="p">{pct:.1f}%</text>'
                 f'</g>'
             )
             y += row_h
@@ -349,42 +386,43 @@ def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
 
     # ── Divider ──
     parts.append(
-        f'<line x1="{divider_x}" y1="{header_h + 8}" x2="{divider_x}" y2="{max_y - 6}" '
-        f'stroke="{theme["border"]}" stroke-width="0.5" opacity="0.2"/>'
+        f'<line x1="{divider_x}" y1="{header_h + 6}" x2="{divider_x}" y2="{max_y - 8}" '
+        f'stroke="{theme["border"]}" stroke-width="1" opacity="0.3"/>'
     )
 
     # ── Frameworks (right) ──
-    rx = divider_x + pad
+    rx = divider_x + 18
     if s_fw and fws:
         fy = header_h + 16
-        parts.append(f'<text x="{rx}" y="{fy}" class="sec">⚡ Frameworks</text>')
-        fy += 22
+        parts.append(f'<text x="{rx}" y="{fy}" class="sec">⚡ Frameworks &amp; Tools</text>')
+        fy += 24
         fx = rx
+        max_fw_x = vw - pad
         for fw in fws:
             bc = FRAMEWORK_COLORS.get(fw, "#555555")
             tc = _tc(bc)
-            tw = len(fw) * 7.2 + 18
-            if fx + tw > vw - pad:
+            tw = len(fw) * 7.5 + 20
+            if fx + tw > max_fw_x:
                 fx = rx
-                fy += 28
+                fy += 30
             parts.append(
-                f'<rect x="{fx}" y="{fy - 14}" width="{tw:.0f}" height="23" rx="11.5" '
-                f'fill="{bc}" opacity="0.85"/>'
+                f'<rect x="{fx}" y="{fy - 15}" width="{tw:.0f}" height="26" rx="13" '
+                f'fill="{bc}" opacity="0.9"/>'
                 f'<text x="{fx + tw / 2:.0f}" y="{fy + 2}" text-anchor="middle" '
                 f'class="b" fill="{tc}">{_e(fw)}</text>'
             )
-            fx += tw + 7
-        max_y = max(max_y, fy + 20)
+            fx += tw + 8
+        max_y = max(max_y, fy + 22)
 
     # ── Footer ──
-    fy = max_y + 8
+    fy = max_y + 10
     if s_footer:
-        fy += 6
+        fy += 4
         parts.append(
             f'<text x="{vw // 2}" y="{fy}" text-anchor="middle" class="f">'
             f'CodeStats · github.com/volumeee</text>'
         )
-        fy += 10
+        fy += 12
 
     return _svg(vw, fy + 6, theme, "\n  ".join(parts))
 
@@ -394,15 +432,16 @@ def _svg(vw: int, vh: int, theme: dict, body: str) -> str:
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 {vw} {vh}"
      preserveAspectRatio="xMidYMin meet">
   <defs><style>
-    .t {{ font: 700 16px 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; }}
-    .s {{ font: 400 11px 'Segoe UI', Ubuntu, sans-serif; fill: {theme['muted']}; }}
-    .sec {{ font: 600 11px 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; }}
-    .l {{ font: 500 11px 'Segoe UI', Ubuntu, sans-serif; fill: {theme['text']}; }}
-    .tm {{ font: 400 10px 'Segoe UI', monospace; fill: {theme['muted']}; }}
-    .p {{ font: 500 10px 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
-    .b {{ font: 600 9.5px 'Segoe UI', sans-serif; }}
-    .f {{ font: 400 9px 'Segoe UI', sans-serif; fill: {theme['muted']}; opacity: 0.4; }}
-    .pill {{ font: 500 9.5px 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+    .t {{ font: 700 16px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; }}
+    .s {{ font: 400 11px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['muted']}; }}
+    .sec {{ font: 600 11.5px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; letter-spacing: 0.3px; }}
+    .l {{ font: 500 11px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['text']}; }}
+    .tm {{ font: 400 10.5px 'Inter', 'Segoe UI', monospace; fill: {theme['muted']}; }}
+    .p {{ font: 600 10px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
+    .b {{ font: 600 10px 'Inter', 'Segoe UI', sans-serif; }}
+    .f {{ font: 400 9.5px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; opacity: 0.5; }}
+    .pill {{ font: 500 9.5px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
     .pv {{ fill: {theme['text']}; font-weight: 700; }}
   </style></defs>
   <rect width="{vw}" height="{vh}" rx="12" fill="{theme['bg']}" stroke="{theme['border']}" stroke-width="1"/>
@@ -433,6 +472,6 @@ def generate_error_svg(message: str, theme_name: str = "dark") -> str:
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 495 80"
      preserveAspectRatio="xMidYMin meet">
   <rect width="495" height="80" rx="12" fill="{theme['bg']}" stroke="{theme['border']}" stroke-width="1"/>
-  <text x="247" y="35" text-anchor="middle" style="font:600 14px 'Segoe UI',sans-serif;fill:{theme['title']}">⚠️ CodeStats Error</text>
-  <text x="247" y="58" text-anchor="middle" style="font:400 11px 'Segoe UI',sans-serif;fill:{theme['muted']}">{_e(message)}</text>
+  <text x="247" y="35" text-anchor="middle" style="font:600 14px 'Inter','Segoe UI',sans-serif;fill:{theme['title']}">⚠️ CodeStats Error</text>
+  <text x="247" y="58" text-anchor="middle" style="font:400 11px 'Inter','Segoe UI',sans-serif;fill:{theme['muted']}">{_e(message)}</text>
 </svg>"""
