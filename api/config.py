@@ -108,4 +108,12 @@ THEMES = {
         "bg": "#1a1b27", "border": "#70a5fd", "title": "#70a5fd",
         "text": "#38bdae", "muted": "#a9b1d6", "bar_bg": "#24283b",
     },
+    "cyberpunk": {
+        "bg": "#0f0f1a", "border": "#00ffcc", "title": "#ff007f",
+        "text": "#00ffcc", "muted": "#8ca8d9", "bar_bg": "#1a1b2e",
+    },
+    "hacker": {
+        "bg": "#000000", "border": "#00ff00", "title": "#00ff00",
+        "text": "#00ff00", "muted": "#008800", "bar_bg": "#052205",
+    },
 }

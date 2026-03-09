@@ -34,7 +34,7 @@ DATA = {
 }
 
 OUT = "/tmp"
-THEMES = ["dark", "light", "radical", "tokyonight"]
+THEMES = ["dark", "light", "radical", "tokyonight", "cyberpunk", "hacker"]
 
 print("=" * 60)
 print("  CodeStats SVG Generator — Test Suite")

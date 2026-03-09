@@ -130,10 +130,12 @@ def _stat_pill(x: int, y: int, icon: str, label: str, value: str, theme: dict) -
     text = f"{label}: {value}"
     w = max(len(text) * 7 + 28, 90)
     return (
+        f'<g class="stat-pill">'
         f'<rect x="{x}" y="{y}" width="{w:.0f}" height="26" rx="13" '
-        f'fill="{theme["bar_bg"]}" opacity="0.9"/>'
+        f'fill="{theme["bar_bg"]}" opacity="0.9" class="pill-bg"/>'
         f'<text x="{x + 14}" y="{y + 17}" class="pill">'
         f'{icon} {_e(label)}: <tspan class="pv">{_e(value)}</tspan></text>'
+        f'</g>'
     )
 
 
@@ -286,7 +288,7 @@ def _build_portrait(data: dict, theme: dict, opts: dict) -> str:
                 y += 30
             parts.append(
                 f'<rect x="{fx}" y="{y - 16}" width="{tw:.0f}" height="26" rx="13" '
-                f'fill="{bc}" opacity="0.9"/>'
+                f'fill="{bc}" opacity="0.9" class="fw-badge"/>'
                 f'<text x="{fx + tw / 2:.0f}" y="{y + 1}" text-anchor="middle" '
                 f'class="b" fill="{tc}">{_e(fw)}</text>'
             )
@@ -407,7 +409,7 @@ def _build_landscape(data: dict, theme: dict, opts: dict) -> str:
                 fy += 30
             parts.append(
                 f'<rect x="{fx}" y="{fy - 15}" width="{tw:.0f}" height="26" rx="13" '
-                f'fill="{bc}" opacity="0.9"/>'
+                f'fill="{bc}" opacity="0.9" class="fw-badge"/>'
                 f'<text x="{fx + tw / 2:.0f}" y="{fy + 2}" text-anchor="middle" '
                 f'class="b" fill="{tc}">{_e(fw)}</text>'
             )
@@ -433,7 +435,25 @@ def _svg(vw: int, vh: int, theme: dict, body: str) -> str:
      preserveAspectRatio="xMidYMin meet">
   <defs><style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
-    .t {{ font: 700 16px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; }}
+    
+    @keyframes pulseGlow {{
+      0% {{ filter: drop-shadow(0 0 2px {theme['title']}); opacity: 0.9; }}
+      50% {{ filter: drop-shadow(0 0 8px {theme['title']}); opacity: 1; }}
+      100% {{ filter: drop-shadow(0 0 2px {theme['title']}); opacity: 0.9; }}
+    }}
+    
+    @keyframes slideUp {{
+      from {{ transform: translateY(12px); opacity: 0; }}
+      to {{ transform: translateY(0); opacity: 1; }}
+    }}
+    
+    .card-bg {{
+      fill: {theme['bg']};
+      stroke: {theme['border']};
+      stroke-width: 1.5;
+    }}
+    
+    .t {{ font: 700 16px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; animation: pulseGlow 3s infinite; }}
     .s {{ font: 400 11px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['muted']}; }}
     .sec {{ font: 600 11.5px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['title']}; letter-spacing: 0.3px; }}
     .l {{ font: 500 11px 'Inter', 'Segoe UI', Ubuntu, sans-serif; fill: {theme['text']}; }}
@@ -441,10 +461,34 @@ def _svg(vw: int, vh: int, theme: dict, body: str) -> str:
     .p {{ font: 600 10px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
     .b {{ font: 600 10px 'Inter', 'Segoe UI', sans-serif; }}
     .f {{ font: 400 9.5px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; opacity: 0.5; }}
-    .pill {{ font: 500 9.5px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; }}
+    .pill {{ font: 500 9.5px 'Inter', 'Segoe UI', sans-serif; fill: {theme['muted']}; cursor: pointer; }}
     .pv {{ fill: {theme['text']}; font-weight: 700; }}
+    
+    .stat-pill {{ transition: all 0.3s ease; transform-origin: center; }}
+    .stat-pill:hover {{ transform: translateY(-2px); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3)); }}
+    .pill-bg {{ transition: fill 0.3s ease; }}
+    .stat-pill:hover .pill-bg {{ filter: brightness(1.2); }}
+    
+    g {{ animation: slideUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; opacity: 0; }}
+    g:nth-child(1) {{ animation-delay: 0.05s; }}
+    g:nth-child(2) {{ animation-delay: 0.1s; }}
+    g:nth-child(3) {{ animation-delay: 0.15s; }}
+    g:nth-child(4) {{ animation-delay: 0.2s; }}
+    g:nth-child(5) {{ animation-delay: 0.25s; }}
+    g:nth-child(6) {{ animation-delay: 0.3s; }}
+    g:nth-child(7) {{ animation-delay: 0.35s; }}
+    g:nth-child(8) {{ animation-delay: 0.4s; }}
+    g:nth-child(n+9) {{ animation-delay: 0.45s; }}
+    
+    rect.fw-badge {{
+       transition: all 0.3s ease;
+    }}
+    rect.fw-badge:hover {{
+       filter: brightness(1.2);
+       transform: scale(1.05);
+    }}
   </style></defs>
-  <rect width="{vw}" height="{vh}" rx="12" fill="{theme['bg']}" stroke="{theme['border']}" stroke-width="1"/>
+  <rect width="{vw}" height="{vh}" rx="12" class="card-bg"/>
   {body}
 </svg>"""
 

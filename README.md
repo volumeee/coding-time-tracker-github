@@ -37,6 +37,14 @@ Add this to your GitHub profile README — just replace `volumeee` with your Git
 
 ![Coding Stats](https://coding-time-tracker-github.vercel.app/api?username=volumeee)
 
+### 🚀 Best Practice: The Ultimate Interactive Portal
+
+To achieve maximum coolness, wrap the SVG image in a Markdown link pointing to your hosted **Perspective Dashboard**. When visitors click your SVG card, they will be transported to a full 3D interactive dashboard!
+
+```markdown
+[![Coding Stats](https://coding-time-tracker-github.vercel.app/api?username=volumeee&theme=cyberpunk)](https://your-perspective-dashboard.vercel.app/?username=volumeee)
+```
+
 ---
 
 ## 🎯 Features
@@ -45,7 +53,8 @@ Add this to your GitHub profile README — just replace `volumeee` with your Git
 | -------------------------- | ---------------------------------------------------- |
 | 📊 **Language Breakdown**  | Top programming languages with colored progress bars |
 | ⚡ **Framework Detection** | Auto-detects frameworks from config files            |
-| 🎨 **4 Themes**            | Dark, Light, Radical, TokyoNight                     |
+| 🎨 **6 Themes**            | Dark, Light, Radical, TokyoNight, Cyberpunk, Hacker  |
+| ✨ **CSS Animations**      | Interactive SVG hover effects & pulsing glows        |
 | 📐 **2 Layouts**           | Landscape (horizontal) & Portrait (vertical)         |
 | 📱 **Responsive SVG**      | Auto-scales on desktop, tablet, and mobile           |
 | 🌈 **Language Bar**        | GitHub-style combined proportion bar                 |
