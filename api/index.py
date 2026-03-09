@@ -1,4 +1,5 @@
 """CodeStats API — FastAPI entry point for Vercel serverless deployment."""
+import hashlib
 import logging
 import os
 import sys
@@ -6,6 +7,7 @@ import sys
 # Ensure api/ directory is on the Python path for Vercel
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import httpx
 from config import (
     BUILD_FW,
     CACHE_TTL,
@@ -48,8 +50,13 @@ SVG_HEADERS = {
 }
 
 
+def get_etag(data_str: str) -> str:
+    """Generate ETag from string content."""
+    return hashlib.md5(data_str.encode("utf-8")).hexdigest()
+
+
 @app.get("/api")
-def get_stats(
+async def get_stats(
     request: Request,
     username: str = Query(..., description="GitHub username"),
     theme: str = Query("dark", description="Theme: dark, light, radical, tokyonight"),
@@ -58,7 +65,7 @@ def get_stats(
     langs_count: int = Query(8, ge=1, le=20, description="Max languages to show"),
     period: int = Query(365, ge=7, le=3650, description="Period in days"),
     max_repos: int = Query(200, ge=1, le=500, description="Max repos to scan"),
-    ignore_langs: str = Query("", description="Comma-separated languages to ignore, e.g. HTML,CSS"),
+    ignore_langs: str = Query("", description="Comma-separated languages to ignore"),
     show_frameworks: bool = Query(True, description="Show frameworks section"),
     show_languages: bool = Query(True, description="Show languages section"),
     show_title: bool = Query(True, description="Show title/header"),
@@ -66,7 +73,6 @@ def get_stats(
     no_cache: bool = Query(False, description="Force refresh data"),
 ):
     """Generate an SVG coding stats card for the given username."""
-    # Rate limit: 30 requests per minute per IP
     client_ip = request.client.host if request.client else "unknown"
     if not cache.check_rate_limit(f"req:{client_ip}", limit=30, window=60):
         svg = generate_error_svg("Rate limit exceeded (30 req/min). Please try again later.", theme)
@@ -78,47 +84,46 @@ def get_stats(
 
     # Normalize ignored languages string for cache and passing
     ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
-    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
+    data_cache_key = f"codestats_data:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
 
-    # Try cache first
+    data = None
     if not no_cache and cache.available:
-        cached = cache.get(cache_key)
-        if cached:
-            logger.info(f"Cache hit for {username}")
-            svg = generate_svg(
-                cached, theme, langs_count, show_frameworks,
-                layout, width, show_title, show_footer, show_languages,
-            )
+        data = cache.get(data_cache_key)
+
+    if not data:
+        logger.info(f"Processing stats for {username} (period={period}d, repos={max_repos})")
+        try:
+            async with httpx.AsyncClient() as client:
+                service = GitHubService(token=GITHUB_TOKEN, client=client)
+                data = await run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
+
+            if data["total_hours"] == 0 and data["repo_count"] == 0:
+                svg = generate_error_svg(f"No coding activity found for '{username}' in the last {period} days.", theme)
+                return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
+
+            if cache.available:
+                cache.set(data_cache_key, data, CACHE_TTL)
+                logger.info(f"Cached results for {username}")
+
+        except Exception as e:
+            logger.error(f"Error processing {username}: {e}")
+            svg = generate_error_svg(f"Processing error: {str(e)[:80]}", theme)
             return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
 
-    # Process live
-    logger.info(f"Processing stats for {username} (period={period}d, repos={max_repos})")
-    try:
-        service = GitHubService(token=GITHUB_TOKEN)
-        data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
+    # Re-render SVG without re-fetching API if parameters like theme vary
+    svg = generate_svg(
+        data, theme, langs_count, show_frameworks,
+        layout, width, show_title, show_footer, show_languages,
+    )
 
-        if data["total_hours"] == 0 and data["repo_count"] == 0:
-            svg = generate_error_svg(
-                f"No coding activity found for '{username}' in the last {period} days.",
-                theme,
-            )
-            return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
+    etag = get_etag(svg)
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match == etag:
+        return Response(status_code=304)
 
-        # Cache results
-        if cache.available:
-            cache.set(cache_key, data, CACHE_TTL)
-            logger.info(f"Cached results for {username}")
-
-        svg = generate_svg(
-            data, theme, langs_count, show_frameworks,
-            layout, width, show_title, show_footer, show_languages,
-        )
-        return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
-
-    except Exception as e:
-        logger.error(f"Error processing {username}: {e}")
-        svg = generate_error_svg(f"Processing error: {str(e)[:80]}", theme)
-        return Response(content=svg, media_type="image/svg+xml", headers=SVG_HEADERS)
+    headers = dict(SVG_HEADERS)
+    headers["ETag"] = etag
+    return Response(content=svg, media_type="image/svg+xml", headers=headers)
 
 
 @app.get("/api/health")
@@ -132,7 +137,7 @@ def health():
 
 
 @app.get("/api/json")
-def get_json(
+async def get_json(
     request: Request,
     username: str = Query(..., description="GitHub username"),
     period: int = Query(365, ge=7, le=3650),
@@ -149,23 +154,25 @@ def get_json(
         return {"error": "GITHUB_TOKEN not configured"}
 
     ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
-    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
+    data_cache_key = f"codestats_data:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
 
     if not no_cache and cache.available:
-        cached = cache.get(cache_key)
-        if cached:
-            return cached
+        data = cache.get(data_cache_key)
+        if data:
+            return data
 
-    service = GitHubService(token=GITHUB_TOKEN)
-    data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
+    async with httpx.AsyncClient() as client:
+        service = GitHubService(token=GITHUB_TOKEN, client=client)
+        data = await run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
 
     if cache.available:
-        cache.set(cache_key, data, CACHE_TTL)
+        cache.set(data_cache_key, data, CACHE_TTL)
 
     return data
 
+
 @app.get("/api/code")
-def get_code(
+async def get_code(
     request: Request,
     username: str = Query(..., description="GitHub username"),
     langs_count: int = Query(10, ge=1, le=20),
@@ -184,18 +191,28 @@ def get_code(
         return Response(content="Error: GITHUB_TOKEN not configured", media_type="text/plain")
 
     ignored_list = [lang.strip().lower() for lang in ignore_langs.split(",") if lang.strip()]
-    cache_key = f"codestats:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
+    data_cache_key = f"codestats_data:{username}:{period}:{max_repos}:{'|'.join(ignored_list)}"
     data = None
 
     if not no_cache and cache.available:
-        data = cache.get(cache_key)
+        data = cache.get(data_cache_key)
 
     if not data:
-        service = GitHubService(token=GITHUB_TOKEN)
-        data = run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
+        async with httpx.AsyncClient() as client:
+            service = GitHubService(token=GITHUB_TOKEN, client=client)
+            data = await run_tracker(service, username, period, FW_MAPS, max_repos, ignored_list)
         if cache.available:
-            cache.set(cache_key, data, CACHE_TTL)
+            cache.set(data_cache_key, data, CACHE_TTL)
 
     code = generate_code_block(data, langs_count, show_frameworks)
-    return Response(content=code, media_type="text/plain",
-                    headers={"Cache-Control": "public, max-age=7200"})
+    
+    etag = get_etag(code)
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match == etag:
+        return Response(status_code=304)
+
+    return Response(
+        content=code, 
+        media_type="text/plain",
+        headers={"Cache-Control": "public, max-age=7200", "ETag": etag}
+    )

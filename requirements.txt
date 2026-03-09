@@ -1,2 +1,4 @@
 fastapi
 upstash-redis
+httpx
+uvicorn

@@ -1,8 +1,8 @@
 """Core tracker: orchestrates repo processing, time calc & framework detection."""
+import asyncio
 import logging
 import time as time_mod
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -14,16 +14,9 @@ MAX_SESSION = 4   # hours — cap per single session to avoid unrealistic gaps
 
 
 def calculate_coding_time(commits: list) -> float:
-    """Calculate coding hours from commit timestamps using session detection.
-
-    Algorithm:
-    - Sort commits by time
-    - Group into sessions: commits within SESSION_GAP of each other
-    - Each session: sum of gaps between commits (capped) + MIN_SESSION for last
-    - Single commit = MIN_SESSION minutes
-    """
+    """Calculate coding hours from commit timestamps using session detection."""
     if not commits:
-        return 0.0
+        return 0.0, {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
 
     times = []
     for c in commits:
@@ -32,14 +25,20 @@ def calculate_coding_time(commits: list) -> float:
                 c["commit"]["author"]["date"], "%Y-%m-%dT%H:%M:%SZ"
             ).replace(tzinfo=timezone.utc)
             times.append(dt)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             continue
 
     if not times:
-        return 0.0
+        return 0.0, {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
 
     if len(times) == 1:
-        return MIN_SESSION / 60
+        hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
+        h = times[0].hour
+        if 0 <= h < 6: hours_dist["night"] = 1
+        elif 6 <= h < 12: hours_dist["morning"] = 1
+        elif 12 <= h < 18: hours_dist["daytime"] = 1
+        else: hours_dist["evening"] = 1
+        return MIN_SESSION / 60, hours_dist
 
     times.sort()
     total_secs = 0.0
@@ -55,7 +54,6 @@ def calculate_coding_time(commits: list) -> float:
 
     total_secs += MIN_SESSION * 60
 
-    # Calculate time of day (using UTC for now, or user tz)
     hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
     for t in times:
         h = t.hour
@@ -86,7 +84,7 @@ def is_valid_commit(commit: dict) -> bool:
     return not any(p in msg for p in skip)
 
 
-def process_single_repo(service, username: str, repo: dict,
+async def process_single_repo(service, username: str, repo: dict,
                          since_iso: str, until_iso: str, fw_maps: dict, ignore_langs: list) -> dict:
     """Process one repository: languages, commits, frameworks."""
     name = repo["name"]
@@ -94,24 +92,29 @@ def process_single_repo(service, username: str, repo: dict,
     result = {"name": name, "langs": {}, "frameworks": set(), "hours": 0.0, "hours_dist": {"night": 0, "morning": 0, "daytime": 0, "evening": 0}}
 
     try:
-        # Skip empty repos
         if repo.get("size", 0) == 0:
             return result
 
         # 1. Languages
-        langs = service.get_languages(owner, name)
+        langs = await service.get_languages(owner, name)
         if ignore_langs and langs:
             langs = {k: v for k, v in langs.items() if k.lower() not in ignore_langs}
         if not langs:
             return result
         result["langs"] = langs
 
-        # 2. Commits — try both username formats for accuracy
-        commits = service.get_commits(owner, name, username, since_iso, until_iso)
+        # 2. Commits — try both username formats concurrently
+        tasks = [
+            service.get_commits(owner, name, username, since_iso, until_iso),
+        ]
+        if owner.lower() != username.lower():
+            tasks.append(service.get_commits(owner, name, owner, since_iso, until_iso))
 
-        # Also try with GitHub email if we have different owner
-        if not commits and owner.lower() != username.lower():
-            commits = service.get_commits(owner, name, owner, since_iso, until_iso)
+        commit_results = await asyncio.gather(*tasks, return_exceptions=True)
+        commits = []
+        for res in commit_results:
+            if isinstance(res, list):
+                commits.extend(res)
 
         valid = [c for c in commits if is_valid_commit(c)]
         if valid:
@@ -121,7 +124,7 @@ def process_single_repo(service, username: str, repo: dict,
 
         # 3. Frameworks
         primary = repo.get("language", "")
-        result["frameworks"] = service.detect_frameworks(
+        result["frameworks"] = await service.detect_frameworks(
             owner, name, primary, fw_maps
         )
     except Exception as e:
@@ -130,22 +133,17 @@ def process_single_repo(service, username: str, repo: dict,
     return result
 
 
-def run_tracker(service, username: str, period_days: int,
+async def run_tracker(service, username: str, period_days: int,
                 fw_maps: dict, max_repos: int = 200, ignore_langs: list = None) -> dict:
-    """
-    Main entry: fetch ALL repos, process in parallel, aggregate results.
-    Returns {langs, frameworks, total_hours, repo_count, period_days, username}.
-    """
     start_time = time_mod.time()
-    deadline = start_time + 55  # Vercel Pro = 60s, Free = 10s — be safe
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=period_days)
     since_iso = since.isoformat()
     until_iso = now.isoformat()
 
-    # Fetch ALL repos (public + private + forks)
-    repos = service.get_repos(username, max_repos, include_forks=True)
+    # Fetch ALL repos
+    repos = await service.get_repos(username, max_repos, include_forks=True)
     if not repos:
         return {
             "langs": {}, "frameworks": {}, "total_hours": 0,
@@ -153,7 +151,6 @@ def run_tracker(service, username: str, period_days: int,
             "prs": 0, "issues": 0, "busiest_time": "Daytime",
         }
 
-    # Filter: only repos pushed within the period
     repos_in_period = []
     for r in repos:
         pushed = r.get("pushed_at", "")
@@ -175,68 +172,50 @@ def run_tracker(service, username: str, period_days: int,
     lang_hours = defaultdict(float)
     fw_hours = defaultdict(float)
     total_hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
+
+    # Parallel processing of all repositories
+    repo_tasks = [
+        process_single_repo(service, username, repo, since_iso, until_iso, fw_maps, ignore_langs or [])
+        for repo in repos_in_period
+    ]
+    
+    # Also fetch PRs and Issues simultaneously
+    extra_tasks = [
+        service.get_user_prs(username),
+        service.get_user_issues(username)
+    ]
+
+    all_results = await asyncio.gather(*repo_tasks, *extra_tasks, return_exceptions=True)
+    
+    repo_results = all_results[:-2]
+    extra_results = all_results[-2:]
+    
+    prs = extra_results[0] if not isinstance(extra_results[0], Exception) else 0
+    issues = extra_results[1] if not isinstance(extra_results[1], Exception) else 0
+
     processed = 0
+    for r in repo_results:
+        if isinstance(r, Exception):
+            logger.error(f"Future error: {r}")
+            continue
 
-    # Fetch PRs and Issues in background
-    prs_future = None
-    issues_future = None
+        if r["hours"] <= 0:
+            continue
 
-    # Parallel processing with more workers
-    workers = min(12, len(repos_in_period) + 2)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        # Submit repo jobs
-        futures = {
-            pool.submit(
-                process_single_repo, service, username, repo,
-                since_iso, until_iso, fw_maps, ignore_langs or []
-            ): repo
-            for repo in repos_in_period
-        }
-        
-        # Submit PR and Issue count jobs
-        prs_future = pool.submit(service.get_user_prs, username)
-        issues_future = pool.submit(service.get_user_issues, username)
+        processed += 1
+        total_bytes = sum(r["langs"].values()) or 1
 
-        for future in as_completed(futures):
-            # Check deadline
-            if time_mod.time() > deadline:
-                logger.warning("Approaching timeout, returning partial results")
-                break
+        for lang, byte_count in r["langs"].items():
+            lang_hours[lang] += r["hours"] * (byte_count / total_bytes)
 
-            try:
-                r = future.result(timeout=8)
-            except Exception as e:
-                logger.error(f"Future error: {e}")
-                continue
-
-            if r["hours"] <= 0:
-                continue
-
-            processed += 1
-            total_bytes = sum(r["langs"].values()) or 1
-
-            # Distribute time across languages by byte proportion
-            for lang, byte_count in r["langs"].items():
-                lang_hours[lang] += r["hours"] * (byte_count / total_bytes)
-
-            # Time of day dist
-            for k, v in r.get("hours_dist", {}).items():
-                total_hours_dist[k] += v
+        for k, v in r.get("hours_dist", {}).items():
+            total_hours_dist[k] += v
+            
+        for fw in r.get("frameworks", set()):
+            fw_hours[fw] += r["hours"]
 
     total = sum(lang_hours.values())
     
-    # Extract PRs and Issues safely
-    prs = 0
-    issues = 0
-    try:
-        if prs_future:
-            prs = prs_future.result(timeout=2)
-        if issues_future:
-            issues = issues_future.result(timeout=2)
-    except Exception:
-        pass
-
-    # Determine Busiest Time
     busiest_time = "Daytime"
     if sum(total_hours_dist.values()) > 0:
         busiest_time_key = max(total_hours_dist, key=total_hours_dist.get)
