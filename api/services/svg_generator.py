@@ -469,7 +469,7 @@ def _svg(vw: int, vh: int, theme: dict, body: str) -> str:
     .pill-bg {{ transition: fill 0.3s ease; }}
     .stat-pill:hover .pill-bg {{ filter: brightness(1.2); }}
     
-    g {{ animation: slideUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; opacity: 0; }}
+    g {{ animation: slideUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) both; }}
     g:nth-child(1) {{ animation-delay: 0.05s; }}
     g:nth-child(2) {{ animation-delay: 0.1s; }}
     g:nth-child(3) {{ animation-delay: 0.15s; }}

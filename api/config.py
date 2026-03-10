@@ -113,7 +113,7 @@ THEMES = {
         "text": "#00ffcc", "muted": "#8ca8d9", "bar_bg": "#1a1b2e",
     },
     "hacker": {
-        "bg": "#000000", "border": "#00ff00", "title": "#00ff00",
-        "text": "#00ff00", "muted": "#008800", "bar_bg": "#052205",
+        "bg": "#000000", "border": "#00bb00", "title": "#00ff00",
+        "text": "#ffffff", "muted": "#00cc00", "bar_bg": "#0a1a0a",
     },
 }
