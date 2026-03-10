@@ -34,10 +34,14 @@ def calculate_coding_time(commits: list) -> float:
     if len(times) == 1:
         hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
         h = times[0].hour
-        if 0 <= h < 6: hours_dist["night"] = 1
-        elif 6 <= h < 12: hours_dist["morning"] = 1
-        elif 12 <= h < 18: hours_dist["daytime"] = 1
-        else: hours_dist["evening"] = 1
+        if 0 <= h < 6:
+            hours_dist["night"] = 1
+        elif 6 <= h < 12:
+            hours_dist["morning"] = 1
+        elif 12 <= h < 18:
+            hours_dist["daytime"] = 1
+        else:
+            hours_dist["evening"] = 1
         return MIN_SESSION / 60, hours_dist
 
     times.sort()
@@ -85,10 +89,11 @@ def is_valid_commit(commit: dict) -> bool:
 
 
 async def process_single_repo(service, username: str, repo: dict,
-                         since_iso: str, until_iso: str, fw_maps: dict, ignore_langs: list) -> dict:
-    """Process one repository: languages, commits, frameworks."""
-    name = repo["name"]
-    owner = repo.get("owner", {}).get("login", username)
+                         since_iso: str, until_iso: str, fw_maps: dict, ignore_langs: list, sem: asyncio.Semaphore) -> dict:
+    """Process one repository: languages, commits, frameworks, throttled by semaphore."""
+    async with sem:
+        name = repo["name"]
+        owner = repo.get("owner", {}).get("login", username)
     result = {"name": name, "langs": {}, "frameworks": set(), "hours": 0.0, "hours_dist": {"night": 0, "morning": 0, "daytime": 0, "evening": 0}}
 
     try:
@@ -173,9 +178,11 @@ async def run_tracker(service, username: str, period_days: int,
     fw_hours = defaultdict(float)
     total_hours_dist = {"night": 0, "morning": 0, "daytime": 0, "evening": 0}
 
-    # Parallel processing of all repositories
+    # Parallel processing of all repositories with a concurrency limit
+    # GitHub secondary rate limit triggers if doing too many simultaneous calls. Max 15 safe.
+    sem = asyncio.Semaphore(15)
     repo_tasks = [
-        process_single_repo(service, username, repo, since_iso, until_iso, fw_maps, ignore_langs or [])
+        process_single_repo(service, username, repo, since_iso, until_iso, fw_maps, ignore_langs or [], sem)
         for repo in repos_in_period
     ]
     

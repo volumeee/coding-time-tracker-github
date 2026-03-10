@@ -1,6 +1,7 @@
 """GitHub API service for fetching repository, commit, and framework data."""
 import asyncio
 import base64
+import json
 import logging
 from typing import Optional
 
@@ -191,7 +192,6 @@ class GitHubService:
             if not content or isinstance(content, Exception):
                 continue
 
-            import json
             if parse_mode == "json":
                 try:
                     pkg = json.loads(content)
